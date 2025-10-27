@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>スマート・ポモドーロ・タイマー</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="page__header">
+        <h1>スマート・ポモドーロ・タイマー</h1>
+        <p>
+          GitHub Pages で動作する、分単位で設定できるシンプルなポモドーロタイマーです。<br />
+          下のプリセットまたはお好みの分数を設定して開始してください。
+        </p>
+      </header>
+
+      <section class="timer-card" aria-live="polite">
+        <div class="timer-card__primary">
+          <p class="timer-card__label" id="timer-label">ポモドーロ (25分)</p>
+          <p class="timer-card__time" id="countdown">25:00</p>
+        </div>
+        <div class="timer-card__secondary">
+          <div class="timer-info">
+            <span class="timer-info__title">開始時刻</span>
+            <time id="start-time" class="timer-info__value">--:--:--</time>
+          </div>
+          <div class="timer-info">
+            <span class="timer-info__title">経過時間</span>
+            <time id="elapsed-time" class="timer-info__value">00:00:00</time>
+          </div>
+          <div class="timer-info">
+            <span class="timer-info__title">完了回数</span>
+            <span id="completed-cycles" class="timer-info__value">0</span>
+          </div>
+        </div>
+        <div class="timer-card__controls">
+          <div class="preset-buttons" role="group" aria-label="プリセット">
+            <button class="btn" data-minutes="25">ポモドーロ 25分</button>
+            <button class="btn" data-minutes="5">ショートブレイク 5分</button>
+            <button class="btn" data-minutes="15">集中 15分</button>
+          </div>
+          <form id="custom-form" class="custom-form" aria-label="カスタム設定">
+            <label for="custom-minutes">カスタム (分)</label>
+            <input
+              type="number"
+              id="custom-minutes"
+              name="custom-minutes"
+              min="1"
+              max="180"
+              step="1"
+              value="45"
+              required
+            />
+            <button type="submit" class="btn btn--accent">この時間で開始</button>
+          </form>
+          <div class="action-buttons" role="group" aria-label="操作">
+            <button id="start-button" class="btn btn--primary">開始</button>
+            <button id="pause-button" class="btn" disabled>一時停止</button>
+            <button id="reset-button" class="btn">リセット</button>
+          </div>
+          <label class="autoplay-toggle">
+            <input type="checkbox" id="auto-restart" checked />
+            <span>タイマー完了後に同じ分数で自動再開する</span>
+          </label>
+        </div>
+      </section>
+
+      <footer class="page__footer">
+        <p>
+          ブラウザがサウンドを再生できるよう、開始ボタンを押す前に音量をご確認ください。
+        </p>
+      </footer>
+    </main>
+
+    <script src="script.js"></script>
+  </body>
+</html>
