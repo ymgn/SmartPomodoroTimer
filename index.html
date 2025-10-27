@@ -37,23 +37,43 @@
         </div>
         <div class="timer-card__controls">
           <div class="preset-buttons" role="group" aria-label="プリセット">
-            <button class="btn" data-minutes="25">ポモドーロ 25分</button>
+            <button class="btn" data-mode="pomodoro" data-minutes="25" data-break="5">
+              ポモドーロ 25分
+            </button>
             <button class="btn" data-minutes="5">ショートブレイク 5分</button>
             <button class="btn" data-minutes="15">集中 15分</button>
           </div>
           <form id="custom-form" class="custom-form" aria-label="カスタム設定">
-            <label for="custom-minutes">カスタム (分)</label>
-            <input
-              type="number"
-              id="custom-minutes"
-              name="custom-minutes"
-              min="1"
-              max="180"
-              step="1"
-              value="45"
-              required
-            />
-            <button type="submit" class="btn btn--accent">この時間で開始</button>
+            <div class="custom-form__row">
+              <label for="custom-minutes">作業 (分)</label>
+              <input
+                type="number"
+                id="custom-minutes"
+                name="custom-minutes"
+                min="1"
+                max="180"
+                step="1"
+                value="25"
+                required
+              />
+            </div>
+            <label class="toggle" for="enable-break">
+              <input type="checkbox" id="enable-break" checked />
+              <span>休憩を挟む</span>
+            </label>
+            <div class="custom-form__row custom-form__row--break">
+              <label for="break-minutes">休憩 (分)</label>
+              <input
+                type="number"
+                id="break-minutes"
+                name="break-minutes"
+                min="1"
+                max="180"
+                step="1"
+                value="5"
+              />
+            </div>
+            <button type="submit" class="btn btn--accent">この設定で開始</button>
           </form>
           <div class="action-buttons" role="group" aria-label="操作">
             <button id="start-button" class="btn btn--primary">開始</button>

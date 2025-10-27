@@ -6,14 +6,21 @@ const completedCyclesDisplay = document.getElementById("completed-cycles");
 const presetButtons = document.querySelectorAll(".preset-buttons .btn");
 const customForm = document.getElementById("custom-form");
 const customMinutesInput = document.getElementById("custom-minutes");
+const enableBreakCheckbox = document.getElementById("enable-break");
+const breakMinutesInput = document.getElementById("break-minutes");
 const startButton = document.getElementById("start-button");
 const pauseButton = document.getElementById("pause-button");
 const resetButton = document.getElementById("reset-button");
 const autoRestartCheckbox = document.getElementById("auto-restart");
 
-let timerDurationSeconds = 25 * 60;
-let remainingSeconds = timerDurationSeconds;
+let currentMode = "pomodoro";
+let currentPhase = "focus";
 let timerLabel = "ポモドーロ (25分)";
+let timerLabelBase = "ポモドーロ";
+let focusDurationSeconds = 25 * 60;
+let breakDurationSeconds = 5 * 60;
+let timerDurationSeconds = focusDurationSeconds;
+let remainingSeconds = timerDurationSeconds;
 let timerIntervalId = null;
 let startTimestamp = null;
 let pausedTimestamp = null;
@@ -43,7 +50,14 @@ function updateCountdownDisplay() {
 }
 
 function updateLabelDisplay() {
-  timerLabelDisplay.textContent = timerLabel;
+  if (currentMode === "pomodoro") {
+    const phaseName = currentPhase === "focus" ? "作業" : "休憩";
+    const phaseSeconds = currentPhase === "focus" ? focusDurationSeconds : breakDurationSeconds;
+    const minutes = Math.round(Math.max(phaseSeconds, 60) / 60);
+    timerLabelDisplay.textContent = `${timerLabelBase} - ${phaseName} (${minutes}分)`;
+  } else {
+    timerLabelDisplay.textContent = timerLabel;
+  }
 }
 
 function updateStartTimeDisplay() {
@@ -68,11 +82,58 @@ function updateCycleDisplay() {
   completedCyclesDisplay.textContent = String(completedCycles);
 }
 
+function isBreakEnabled() {
+  return enableBreakCheckbox.checked && breakDurationSeconds > 0;
+}
+
+function syncBreakDurationFromInput() {
+  const minutes = Number(breakMinutesInput.value);
+  if (!Number.isFinite(minutes) || minutes <= 0) {
+    return;
+  }
+  breakDurationSeconds = Math.max(1, Math.round(minutes * 60));
+}
+
+function updateBreakInputState() {
+  const isDisabled = !enableBreakCheckbox.checked;
+  breakMinutesInput.disabled = isDisabled;
+  if (isDisabled) {
+    breakMinutesInput.setAttribute("aria-disabled", "true");
+  } else {
+    breakMinutesInput.removeAttribute("aria-disabled");
+  }
+  const breakRow = breakMinutesInput.closest(".custom-form__row--break");
+  if (breakRow) {
+    breakRow.classList.toggle("custom-form__row--inactive", isDisabled);
+  }
+  if (!isDisabled) {
+    syncBreakDurationFromInput();
+  }
+}
+
 function clearTimerInterval() {
   if (timerIntervalId !== null) {
     clearInterval(timerIntervalId);
     timerIntervalId = null;
   }
+}
+
+function transitionToFocusPhase() {
+  currentPhase = "focus";
+  if (currentMode === "pomodoro") {
+    timerDurationSeconds = focusDurationSeconds;
+  }
+  remainingSeconds = timerDurationSeconds;
+  updateLabelDisplay();
+  updateCountdownDisplay();
+}
+
+function transitionToBreakPhase() {
+  currentPhase = "break";
+  timerDurationSeconds = breakDurationSeconds;
+  remainingSeconds = timerDurationSeconds;
+  updateLabelDisplay();
+  updateCountdownDisplay();
 }
 
 function handleTimerTick() {
@@ -81,18 +142,39 @@ function handleTimerTick() {
     remainingSeconds = 0;
     updateCountdownDisplay();
     playChime();
-    completedCycles += 1;
-    updateCycleDisplay();
+    updateElapsedDisplay();
+
+    if (currentMode === "pomodoro") {
+      if (currentPhase === "focus") {
+        completedCycles += 1;
+        updateCycleDisplay();
+        if (isBreakEnabled()) {
+          transitionToBreakPhase();
+          return;
+        }
+      } else if (currentPhase === "break") {
+        if (autoRestartCheckbox.checked) {
+          transitionToFocusPhase();
+        } else {
+          stopTimer({ keepStartTimestamp: false });
+          transitionToFocusPhase();
+        }
+        return;
+      }
+    } else {
+      completedCycles += 1;
+      updateCycleDisplay();
+    }
 
     if (autoRestartCheckbox.checked) {
-      remainingSeconds = timerDurationSeconds;
+      transitionToFocusPhase();
     } else {
       stopTimer({ keepStartTimestamp: false });
-      remainingSeconds = timerDurationSeconds;
-      updateCountdownDisplay();
-      return;
+      transitionToFocusPhase();
     }
+    return;
   }
+
   updateCountdownDisplay();
   updateElapsedDisplay();
 }
@@ -187,7 +269,11 @@ function stopTimer({ keepStartTimestamp } = { keepStartTimestamp: true }) {
 
 function resetTimer() {
   stopTimer();
-  remainingSeconds = timerDurationSeconds;
+  if (currentMode === "pomodoro") {
+    transitionToFocusPhase();
+  } else {
+    remainingSeconds = timerDurationSeconds;
+  }
   startTimestamp = null;
   accumulatedPausedMs = 0;
   completedCycles = 0;
@@ -199,10 +285,29 @@ function resetTimer() {
   startButton.textContent = "開始";
 }
 
-function setTimerDuration(minutes, label, { startImmediately } = { startImmediately: false }) {
-  timerDurationSeconds = Math.max(1, Math.round(minutes * 60));
+function configureSingleTimer(minutes, label, { startImmediately } = { startImmediately: false }) {
+  const focusMinutes = Number.isFinite(minutes) && minutes > 0 ? minutes : 1;
+  currentMode = "single";
+  currentPhase = "focus";
+  timerDurationSeconds = Math.max(1, Math.round(focusMinutes * 60));
   remainingSeconds = timerDurationSeconds;
   timerLabel = label;
+  resetTimer();
+  if (startImmediately) {
+    startTimer({ resetCycles: true });
+  }
+}
+
+function configurePomodoroTimer(focusMinutes, breakMinutes, label, { startImmediately } = { startImmediately: false }) {
+  const safeFocusMinutes = Number.isFinite(focusMinutes) && focusMinutes > 0 ? focusMinutes : 1;
+  const safeBreakMinutes = Number.isFinite(breakMinutes) && breakMinutes > 0 ? breakMinutes : 1;
+  currentMode = "pomodoro";
+  timerLabelBase = label;
+  currentPhase = "focus";
+  focusDurationSeconds = Math.max(1, Math.round(safeFocusMinutes * 60));
+  breakDurationSeconds = Math.max(1, Math.round(safeBreakMinutes * 60));
+  timerDurationSeconds = focusDurationSeconds;
+  remainingSeconds = timerDurationSeconds;
   resetTimer();
   if (startImmediately) {
     startTimer({ resetCycles: true });
@@ -212,20 +317,49 @@ function setTimerDuration(minutes, label, { startImmediately } = { startImmediat
 presetButtons.forEach((button) => {
   button.addEventListener("click", () => {
     const minutes = Number(button.dataset.minutes);
-    const label = `${button.textContent}`;
-    setTimerDuration(minutes, label, { startImmediately: true });
+    const mode = button.dataset.mode;
+    const label = button.textContent.trim();
+    if (!Number.isFinite(minutes) || minutes <= 0) {
+      return;
+    }
+
+    if (mode === "pomodoro") {
+      const defaultBreak = button.dataset.break ? Number(button.dataset.break) : null;
+      if (Number.isFinite(defaultBreak) && defaultBreak > 0) {
+        breakMinutesInput.value = String(defaultBreak);
+      }
+      enableBreakCheckbox.checked = true;
+      updateBreakInputState();
+      syncBreakDurationFromInput();
+      customMinutesInput.value = String(minutes);
+      configurePomodoroTimer(minutes, Number(breakMinutesInput.value), label, {
+        startImmediately: true,
+      });
+    } else {
+      customMinutesInput.value = String(minutes);
+      configureSingleTimer(minutes, label, { startImmediately: true });
+    }
   });
 });
 
 customForm.addEventListener("submit", (event) => {
   event.preventDefault();
-  const minutes = Number(customMinutesInput.value);
-  if (!Number.isFinite(minutes) || minutes <= 0) {
+  const focusMinutes = Number(customMinutesInput.value);
+  if (!Number.isFinite(focusMinutes) || focusMinutes <= 0) {
     customMinutesInput.focus();
     return;
   }
-  const label = `カスタム (${minutes}分)`;
-  setTimerDuration(minutes, label, { startImmediately: true });
+
+  if (enableBreakCheckbox.checked) {
+    syncBreakDurationFromInput();
+    const breakMinutes = Number(breakMinutesInput.value);
+    configurePomodoroTimer(focusMinutes, breakMinutes, "カスタム ポモドーロ", {
+      startImmediately: true,
+    });
+  } else {
+    const label = `カスタム (${focusMinutes}分)`;
+    configureSingleTimer(focusMinutes, label, { startImmediately: true });
+  }
 });
 
 startButton.addEventListener("click", () => {
@@ -240,9 +374,24 @@ resetButton.addEventListener("click", () => {
   resetTimer();
 });
 
+enableBreakCheckbox.addEventListener("change", () => {
+  updateBreakInputState();
+  if (!isBreakEnabled() && currentMode === "pomodoro" && currentPhase === "break") {
+    transitionToFocusPhase();
+  }
+});
+
+breakMinutesInput.addEventListener("change", () => {
+  syncBreakDurationFromInput();
+  if (currentMode === "pomodoro" && currentPhase === "break") {
+    transitionToBreakPhase();
+  }
+});
+
 // 初期表示
 updateCountdownDisplay();
 updateLabelDisplay();
 updateStartTimeDisplay();
 updateElapsedDisplay();
 updateCycleDisplay();
+updateBreakInputState();
