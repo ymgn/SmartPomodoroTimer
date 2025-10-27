@@ -2,6 +2,8 @@
 
 GitHub Pages で公開できる、自由な分数で繰り返し実行できるポモドーロタイマーです。
 
+https://ymgn.github.io/SmartPomodoroTimer/
+
 ## 特徴
 
 - 25 分のポモドーロを初期値としてセット
