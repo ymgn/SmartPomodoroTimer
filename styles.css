@@ -119,6 +119,67 @@ body {
   gap: 1.25rem;
 }
 
+.sound-settings {
+  display: grid;
+  gap: 0.75rem;
+  padding: 1rem 1.25rem;
+  border-radius: 16px;
+  border: 1px solid rgba(77, 150, 255, 0.25);
+  background: rgba(77, 150, 255, 0.08);
+}
+
+.sound-settings__title {
+  margin: 0;
+  text-align: center;
+  font-size: 1.05rem;
+  color: var(--text-muted);
+}
+
+.sound-settings__row {
+  display: grid;
+  gap: 0.35rem;
+  text-align: center;
+}
+
+.sound-settings__select {
+  width: 100%;
+  max-width: 320px;
+  margin: 0 auto;
+  padding: 0.65rem 0.75rem;
+  border-radius: 12px;
+  border: 1px solid var(--border-color);
+  font-size: 1rem;
+  background-color: var(--card-bg);
+  color: inherit;
+}
+
+.sound-settings__volume {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+}
+
+.sound-settings__volume input[type="range"] {
+  width: 200px;
+  accent-color: var(--accent);
+}
+
+.sound-settings__volume span {
+  min-width: 3ch;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+}
+
+.sound-settings__actions {
+  display: flex;
+  justify-content: center;
+}
+
+.sound-settings__actions .btn {
+  min-width: 180px;
+}
+
 .preset-buttons {
   display: flex;
   flex-wrap: wrap;
