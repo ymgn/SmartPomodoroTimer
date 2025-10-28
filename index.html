@@ -80,6 +80,25 @@
             <button id="pause-button" class="btn" disabled>一時停止</button>
             <button id="reset-button" class="btn">リセット</button>
           </div>
+          <div class="volume-control">
+            <label for="volume-slider" class="volume-control__label">
+              通知音量
+              <span id="volume-display" class="volume-control__value">100%</span>
+            </label>
+            <input
+              type="range"
+              id="volume-slider"
+              min="0"
+              max="200"
+              step="1"
+              value="100"
+            />
+            <div class="volume-control__scale" aria-hidden="true">
+              <span>0%</span>
+              <span>100%</span>
+              <span>200%</span>
+            </div>
+          </div>
           <label class="autoplay-toggle">
             <input type="checkbox" id="auto-restart" checked />
             <span>タイマー完了後に同じ分数で自動再開する</span>

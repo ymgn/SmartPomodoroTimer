@@ -12,6 +12,8 @@ const startButton = document.getElementById("start-button");
 const pauseButton = document.getElementById("pause-button");
 const resetButton = document.getElementById("reset-button");
 const autoRestartCheckbox = document.getElementById("auto-restart");
+const volumeSlider = document.getElementById("volume-slider");
+const volumeDisplay = document.getElementById("volume-display");
 
 let currentMode = "pomodoro";
 let currentPhase = "focus";
@@ -28,6 +30,12 @@ let accumulatedPausedMs = 0;
 let completedCycles = 0;
 let isRunning = false;
 let audioContext;
+let phaseEndTimestamp = null;
+let chimeVolumePercent = 100;
+
+function clamp(value, min, max) {
+  return Math.min(Math.max(value, min), max);
+}
 
 function formatCountdown(seconds) {
   const mins = Math.floor(seconds / 60);
@@ -47,6 +55,15 @@ function formatElapsed(ms) {
 
 function updateCountdownDisplay() {
   countdownDisplay.textContent = formatCountdown(remainingSeconds);
+}
+
+function syncRemainingSecondsWithClock() {
+  if (!phaseEndTimestamp) {
+    return;
+  }
+  const msRemaining = phaseEndTimestamp - Date.now();
+  const secondsRemaining = Math.ceil(msRemaining / 1000);
+  remainingSeconds = Math.max(0, secondsRemaining);
 }
 
 function updateLabelDisplay() {
@@ -124,6 +141,7 @@ function transitionToFocusPhase() {
     timerDurationSeconds = focusDurationSeconds;
   }
   remainingSeconds = timerDurationSeconds;
+  phaseEndTimestamp = isRunning ? Date.now() + remainingSeconds * 1000 : null;
   updateLabelDisplay();
   updateCountdownDisplay();
 }
@@ -132,12 +150,13 @@ function transitionToBreakPhase() {
   currentPhase = "break";
   timerDurationSeconds = breakDurationSeconds;
   remainingSeconds = timerDurationSeconds;
+  phaseEndTimestamp = isRunning ? Date.now() + remainingSeconds * 1000 : null;
   updateLabelDisplay();
   updateCountdownDisplay();
 }
 
 function handleTimerTick() {
-  remainingSeconds -= 1;
+  syncRemainingSecondsWithClock();
   if (remainingSeconds <= 0) {
     remainingSeconds = 0;
     updateCountdownDisplay();
@@ -188,15 +207,23 @@ function playChime() {
       audioContext.resume().catch(() => {});
     }
 
+    const volumeRatio = Math.max(0, chimeVolumePercent) / 100;
+    if (volumeRatio === 0) {
+      return;
+    }
+
     const oscillator = audioContext.createOscillator();
     const gainNode = audioContext.createGain();
     const now = audioContext.currentTime;
+    const peakGain = 0.2 * volumeRatio;
+    const startGain = Math.max(peakGain * 0.005, 0.0001);
+    const endGain = Math.max(peakGain * 0.001, 0.00005);
 
     oscillator.type = "sine";
     oscillator.frequency.setValueAtTime(880, now);
-    gainNode.gain.setValueAtTime(0.001, now);
-    gainNode.gain.exponentialRampToValueAtTime(0.2, now + 0.01);
-    gainNode.gain.exponentialRampToValueAtTime(0.0001, now + 1.3);
+    gainNode.gain.setValueAtTime(startGain, now);
+    gainNode.gain.linearRampToValueAtTime(peakGain, now + 0.02);
+    gainNode.gain.exponentialRampToValueAtTime(endGain, now + 1.3);
 
     oscillator.connect(gainNode).connect(audioContext.destination);
     oscillator.start(now);
@@ -231,6 +258,7 @@ function startTimer({ resetCycles } = { resetCycles: false }) {
   updateElapsedDisplay();
   updateCountdownDisplay();
 
+  phaseEndTimestamp = Date.now() + remainingSeconds * 1000;
   timerIntervalId = window.setInterval(handleTimerTick, 1000);
   isRunning = true;
   startButton.disabled = true;
@@ -242,18 +270,23 @@ function pauseTimer() {
   if (!isRunning) {
     return;
   }
+  syncRemainingSecondsWithClock();
   pausedTimestamp = new Date();
   clearTimerInterval();
+  phaseEndTimestamp = null;
   isRunning = false;
   startButton.disabled = false;
   pauseButton.disabled = true;
   startButton.textContent = "再開";
+  updateCountdownDisplay();
+  updateElapsedDisplay();
 }
 
 function stopTimer({ keepStartTimestamp } = { keepStartTimestamp: true }) {
   clearTimerInterval();
   isRunning = false;
   pausedTimestamp = null;
+  phaseEndTimestamp = null;
   startButton.disabled = false;
   pauseButton.disabled = true;
   if (!keepStartTimestamp) {
@@ -273,6 +306,7 @@ function resetTimer() {
     transitionToFocusPhase();
   } else {
     remainingSeconds = timerDurationSeconds;
+    phaseEndTimestamp = null;
   }
   startTimestamp = null;
   accumulatedPausedMs = 0;
@@ -385,6 +419,42 @@ breakMinutesInput.addEventListener("change", () => {
   syncBreakDurationFromInput();
   if (currentMode === "pomodoro" && currentPhase === "break") {
     transitionToBreakPhase();
+  }
+});
+
+function setChimeVolume(percent) {
+  const safeValue = clamp(Math.round(percent), 0, 200);
+  chimeVolumePercent = safeValue;
+  if (volumeDisplay) {
+    volumeDisplay.textContent = `${safeValue}%`;
+  }
+  if (volumeSlider) {
+    volumeSlider.value = String(safeValue);
+    volumeSlider.setAttribute("aria-valuenow", volumeSlider.value);
+    volumeSlider.setAttribute("aria-valuetext", `${safeValue}%`);
+  }
+}
+
+if (volumeSlider) {
+  setChimeVolume(Number(volumeSlider.value) || 100);
+  volumeSlider.addEventListener("input", () => {
+    const sliderValue = Number(volumeSlider.value);
+    if (!Number.isFinite(sliderValue)) {
+      return;
+    }
+    setChimeVolume(sliderValue);
+  });
+}
+
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden && isRunning) {
+    syncRemainingSecondsWithClock();
+    if (remainingSeconds <= 0) {
+      handleTimerTick();
+    } else {
+      updateCountdownDisplay();
+      updateElapsedDisplay();
+    }
   }
 });
 

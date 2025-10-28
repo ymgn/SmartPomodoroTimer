@@ -199,6 +199,38 @@ body {
   justify-content: center;
 }
 
+.volume-control {
+  display: grid;
+  gap: 0.5rem;
+  justify-items: center;
+}
+
+.volume-control__label {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  font-weight: 600;
+}
+
+.volume-control__value {
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
+.volume-control input[type="range"] {
+  width: min(100%, 320px);
+  accent-color: var(--accent);
+}
+
+.volume-control__scale {
+  display: flex;
+  justify-content: space-between;
+  width: min(100%, 320px);
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  letter-spacing: 0.03em;
+}
+
 .btn {
   appearance: none;
   border: none;
