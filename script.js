@@ -1,3 +1,36 @@
+const SOUND_LIBRARY = [
+  {
+    id: "gentle-bell",
+    label: "ソフトベル",
+    description: "柔らかなベルの倍音",
+  },
+  {
+    id: "digital-chirp",
+    label: "デジタルチャープ",
+    description: "上昇する電子音",
+  },
+  {
+    id: "warm-marimba",
+    label: "マリンバ",
+    description: "木琴風のワンショット",
+  },
+  {
+    id: "soft-gong",
+    label: "ソフトゴング",
+    description: "低めのゴングサウンド",
+  },
+  {
+    id: "fresh-drops",
+    label: "さわやかチャイム",
+    description: "滴るような三音",
+  },
+];
+
+const DEFAULT_SOUND_ID = SOUND_LIBRARY[0].id;
+const DEFAULT_VOLUME_PERCENT = 100;
+const MAX_VOLUME_MULTIPLIER = 2;
+const TIMER_UPDATE_INTERVAL_MS = 250;
+
 const countdownDisplay = document.getElementById("countdown");
 const timerLabelDisplay = document.getElementById("timer-label");
 const startTimeDisplay = document.getElementById("start-time");
@@ -12,6 +45,10 @@ const startButton = document.getElementById("start-button");
 const pauseButton = document.getElementById("pause-button");
 const resetButton = document.getElementById("reset-button");
 const autoRestartCheckbox = document.getElementById("auto-restart");
+const soundSelect = document.getElementById("sound-select");
+const volumeRange = document.getElementById("volume-range");
+const volumeValueDisplay = document.getElementById("volume-value");
+const soundPreviewButton = document.getElementById("sound-preview-button");
 
 let currentMode = "pomodoro";
 let currentPhase = "focus";
@@ -28,6 +65,241 @@ let accumulatedPausedMs = 0;
 let completedCycles = 0;
 let isRunning = false;
 let audioContext;
+let selectedSoundId = DEFAULT_SOUND_ID;
+let chimeVolume = DEFAULT_VOLUME_PERCENT / 100;
+let timerEndTimestamp = null;
+
+function ensureAudioContext() {
+  if (!audioContext) {
+    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  if (audioContext.state === "suspended") {
+    audioContext.resume().catch(() => {});
+  }
+  return audioContext;
+}
+
+function scheduleTone(context, destination, {
+  type = "sine",
+  frequency = 440,
+  startTime = context.currentTime,
+  attack = 0.01,
+  decay = 0.1,
+  sustainLevel = 0.6,
+  hold = 0.1,
+  release = 0.3,
+  frequencySweep,
+}) {
+  const oscillator = context.createOscillator();
+  oscillator.type = type;
+  oscillator.frequency.setValueAtTime(frequency, startTime);
+  if (frequencySweep && typeof frequencySweep.to === "number" && typeof frequencySweep.duration === "number") {
+    oscillator.frequency.linearRampToValueAtTime(
+      frequencySweep.to,
+      startTime + Math.max(frequencySweep.duration, 0)
+    );
+  }
+
+  const gainNode = context.createGain();
+  const epsilon = 0.0001;
+  const peakTime = startTime + Math.max(attack, 0.001);
+  const decayTime = peakTime + Math.max(decay, 0);
+  const holdEndTime = decayTime + Math.max(hold, 0);
+  const releaseEndTime = holdEndTime + Math.max(release, 0.01);
+
+  gainNode.gain.setValueAtTime(epsilon, startTime);
+  gainNode.gain.linearRampToValueAtTime(1, peakTime);
+  gainNode.gain.linearRampToValueAtTime(Math.max(sustainLevel, epsilon), decayTime);
+  gainNode.gain.setValueAtTime(Math.max(sustainLevel, epsilon), holdEndTime);
+  gainNode.gain.linearRampToValueAtTime(epsilon, releaseEndTime);
+
+  oscillator.connect(gainNode).connect(destination);
+  oscillator.start(startTime);
+  oscillator.stop(releaseEndTime + 0.05);
+  oscillator.addEventListener("ended", () => {
+    try {
+      oscillator.disconnect();
+      gainNode.disconnect();
+    } catch (error) {
+      console.warn("サウンドノードの解放に失敗しました", error);
+    }
+  });
+
+  return releaseEndTime + 0.05;
+}
+
+function renderChimePattern(soundId, context, destination, startTime) {
+  switch (soundId) {
+    case "digital-chirp": {
+      const base = startTime;
+      const first = scheduleTone(context, destination, {
+        type: "triangle",
+        frequency: 880,
+        startTime: base,
+        attack: 0.005,
+        decay: 0.12,
+        sustainLevel: 0.4,
+        hold: 0.08,
+        release: 0.2,
+        frequencySweep: { to: 1760, duration: 0.25 },
+      });
+      return first;
+    }
+    case "warm-marimba": {
+      const base = startTime;
+      const first = scheduleTone(context, destination, {
+        type: "sine",
+        frequency: 660,
+        startTime: base,
+        attack: 0.01,
+        decay: 0.08,
+        sustainLevel: 0.45,
+        hold: 0.05,
+        release: 0.3,
+      });
+      const second = scheduleTone(context, destination, {
+        type: "square",
+        frequency: 990,
+        startTime: base + 0.05,
+        attack: 0.005,
+        decay: 0.1,
+        sustainLevel: 0.3,
+        hold: 0.05,
+        release: 0.25,
+      });
+      return Math.max(first, second);
+    }
+    case "soft-gong": {
+      const base = startTime;
+      const low = scheduleTone(context, destination, {
+        type: "sine",
+        frequency: 220,
+        startTime: base,
+        attack: 0.02,
+        decay: 0.4,
+        sustainLevel: 0.6,
+        hold: 0.4,
+        release: 0.8,
+      });
+      const high = scheduleTone(context, destination, {
+        type: "sine",
+        frequency: 440,
+        startTime: base + 0.1,
+        attack: 0.02,
+        decay: 0.3,
+        sustainLevel: 0.4,
+        hold: 0.3,
+        release: 0.7,
+      });
+      return Math.max(low, high);
+    }
+    case "fresh-drops": {
+      const base = startTime;
+      const first = scheduleTone(context, destination, {
+        type: "sine",
+        frequency: 1240,
+        startTime: base,
+        attack: 0.005,
+        decay: 0.08,
+        sustainLevel: 0.35,
+        hold: 0.05,
+        release: 0.2,
+      });
+      const second = scheduleTone(context, destination, {
+        type: "sine",
+        frequency: 1480,
+        startTime: base + 0.1,
+        attack: 0.005,
+        decay: 0.09,
+        sustainLevel: 0.35,
+        hold: 0.05,
+        release: 0.2,
+      });
+      const third = scheduleTone(context, destination, {
+        type: "sine",
+        frequency: 1760,
+        startTime: base + 0.2,
+        attack: 0.005,
+        decay: 0.1,
+        sustainLevel: 0.3,
+        hold: 0.05,
+        release: 0.25,
+      });
+      return Math.max(first, second, third);
+    }
+    case "gentle-bell":
+    default: {
+      const base = startTime;
+      const carrier = scheduleTone(context, destination, {
+        type: "sine",
+        frequency: 880,
+        startTime: base,
+        attack: 0.02,
+        decay: 0.25,
+        sustainLevel: 0.5,
+        hold: 0.2,
+        release: 0.5,
+      });
+      const overtone = scheduleTone(context, destination, {
+        type: "sine",
+        frequency: 1320,
+        startTime: base + 0.02,
+        attack: 0.015,
+        decay: 0.18,
+        sustainLevel: 0.35,
+        hold: 0.15,
+        release: 0.45,
+      });
+      return Math.max(carrier, overtone);
+    }
+  }
+}
+
+function playSoundFromLibrary(soundId, volumeMultiplier) {
+  return new Promise((resolve) => {
+    if (!Number.isFinite(volumeMultiplier) || volumeMultiplier <= 0) {
+      resolve();
+      return;
+    }
+
+    const context = ensureAudioContext();
+    if (!context) {
+      resolve();
+      return;
+    }
+
+    const safeVolume = Math.max(0, Math.min(volumeMultiplier, MAX_VOLUME_MULTIPLIER));
+    if (safeVolume <= 0) {
+      resolve();
+      return;
+    }
+
+    const masterGain = context.createGain();
+    const currentTime = context.currentTime + 0.01;
+    masterGain.gain.setValueAtTime(0.0001, currentTime);
+    masterGain.gain.linearRampToValueAtTime(safeVolume, currentTime + 0.01);
+    masterGain.connect(context.destination);
+
+    const releaseTime = renderChimePattern(soundId, context, masterGain, currentTime);
+    const cleanupTime = Math.max(releaseTime ?? currentTime + 0.5, currentTime + 0.1);
+    const timeUntilCleanup = Math.max(0, (cleanupTime - context.currentTime) * 1000 + 100);
+
+    window.setTimeout(() => {
+      try {
+        masterGain.disconnect();
+      } catch (error) {
+        console.warn("サウンドノードの解放に失敗しました", error);
+      }
+      resolve();
+    }, timeUntilCleanup);
+  });
+}
+
+function updateVolumeDisplay() {
+  if (volumeValueDisplay) {
+    volumeValueDisplay.textContent = `${Math.round(chimeVolume * 100)}%`;
+  }
+}
 
 function formatCountdown(seconds) {
   const mins = Math.floor(seconds / 60);
@@ -118,6 +390,20 @@ function clearTimerInterval() {
   }
 }
 
+function refreshTimerTargetForRunningTimer() {
+  if (isRunning) {
+    timerEndTimestamp = Date.now() + Math.max(remainingSeconds, 0) * 1000;
+  }
+}
+
+function syncRemainingSecondsFromTarget() {
+  if (!timerEndTimestamp) {
+    return;
+  }
+  const millisecondsRemaining = timerEndTimestamp - Date.now();
+  remainingSeconds = Math.max(0, Math.ceil(millisecondsRemaining / 1000));
+}
+
 function transitionToFocusPhase() {
   currentPhase = "focus";
   if (currentMode === "pomodoro") {
@@ -126,6 +412,7 @@ function transitionToFocusPhase() {
   remainingSeconds = timerDurationSeconds;
   updateLabelDisplay();
   updateCountdownDisplay();
+  refreshTimerTargetForRunningTimer();
 }
 
 function transitionToBreakPhase() {
@@ -134,79 +421,70 @@ function transitionToBreakPhase() {
   remainingSeconds = timerDurationSeconds;
   updateLabelDisplay();
   updateCountdownDisplay();
+  refreshTimerTargetForRunningTimer();
+}
+
+function handleTimerCompletion() {
+  void playChime();
+
+  if (currentMode === "pomodoro") {
+    if (currentPhase === "focus") {
+      completedCycles += 1;
+      updateCycleDisplay();
+      if (isBreakEnabled()) {
+        transitionToBreakPhase();
+        return;
+      }
+    } else if (currentPhase === "break") {
+      if (autoRestartCheckbox.checked) {
+        transitionToFocusPhase();
+      } else {
+        stopTimer({ keepStartTimestamp: false });
+        transitionToFocusPhase();
+      }
+      return;
+    }
+  } else {
+    completedCycles += 1;
+    updateCycleDisplay();
+  }
+
+  if (autoRestartCheckbox.checked) {
+    transitionToFocusPhase();
+  } else {
+    stopTimer({ keepStartTimestamp: false });
+    transitionToFocusPhase();
+  }
 }
 
 function handleTimerTick() {
-  remainingSeconds -= 1;
-  if (remainingSeconds <= 0) {
-    remainingSeconds = 0;
-    updateCountdownDisplay();
-    playChime();
-    updateElapsedDisplay();
-
-    if (currentMode === "pomodoro") {
-      if (currentPhase === "focus") {
-        completedCycles += 1;
-        updateCycleDisplay();
-        if (isBreakEnabled()) {
-          transitionToBreakPhase();
-          return;
-        }
-      } else if (currentPhase === "break") {
-        if (autoRestartCheckbox.checked) {
-          transitionToFocusPhase();
-        } else {
-          stopTimer({ keepStartTimestamp: false });
-          transitionToFocusPhase();
-        }
-        return;
-      }
-    } else {
-      completedCycles += 1;
-      updateCycleDisplay();
-    }
-
-    if (autoRestartCheckbox.checked) {
-      transitionToFocusPhase();
-    } else {
-      stopTimer({ keepStartTimestamp: false });
-      transitionToFocusPhase();
-    }
+  if (!isRunning || !timerEndTimestamp) {
     return;
   }
 
-  updateCountdownDisplay();
+  const millisecondsRemaining = timerEndTimestamp - Date.now();
+  if (millisecondsRemaining <= 0) {
+    remainingSeconds = 0;
+    updateCountdownDisplay();
+    updateElapsedDisplay();
+    handleTimerCompletion();
+    return;
+  }
+
+  const secondsRemaining = Math.ceil(millisecondsRemaining / 1000);
+  if (secondsRemaining !== remainingSeconds) {
+    remainingSeconds = secondsRemaining;
+    updateCountdownDisplay();
+  }
   updateElapsedDisplay();
 }
 
 function playChime() {
   try {
-    if (!audioContext) {
-      audioContext = new (window.AudioContext || window.webkitAudioContext)();
-    }
-    if (audioContext.state === "suspended") {
-      audioContext.resume().catch(() => {});
-    }
-
-    const oscillator = audioContext.createOscillator();
-    const gainNode = audioContext.createGain();
-    const now = audioContext.currentTime;
-
-    oscillator.type = "sine";
-    oscillator.frequency.setValueAtTime(880, now);
-    gainNode.gain.setValueAtTime(0.001, now);
-    gainNode.gain.exponentialRampToValueAtTime(0.2, now + 0.01);
-    gainNode.gain.exponentialRampToValueAtTime(0.0001, now + 1.3);
-
-    oscillator.connect(gainNode).connect(audioContext.destination);
-    oscillator.start(now);
-    oscillator.stop(now + 1.4);
-    oscillator.addEventListener("ended", () => {
-      oscillator.disconnect();
-      gainNode.disconnect();
-    });
+    return playSoundFromLibrary(selectedSoundId, chimeVolume);
   } catch (error) {
     console.warn("サウンドを再生できませんでした", error);
+    return Promise.resolve();
   }
 }
 
@@ -231,7 +509,8 @@ function startTimer({ resetCycles } = { resetCycles: false }) {
   updateElapsedDisplay();
   updateCountdownDisplay();
 
-  timerIntervalId = window.setInterval(handleTimerTick, 1000);
+  timerEndTimestamp = Date.now() + Math.max(remainingSeconds, 0) * 1000;
+  timerIntervalId = window.setInterval(handleTimerTick, TIMER_UPDATE_INTERVAL_MS);
   isRunning = true;
   startButton.disabled = true;
   pauseButton.disabled = false;
@@ -242,6 +521,8 @@ function pauseTimer() {
   if (!isRunning) {
     return;
   }
+  syncRemainingSecondsFromTarget();
+  timerEndTimestamp = null;
   pausedTimestamp = new Date();
   clearTimerInterval();
   isRunning = false;
@@ -254,6 +535,7 @@ function stopTimer({ keepStartTimestamp } = { keepStartTimestamp: true }) {
   clearTimerInterval();
   isRunning = false;
   pausedTimestamp = null;
+  timerEndTimestamp = null;
   startButton.disabled = false;
   pauseButton.disabled = true;
   if (!keepStartTimestamp) {
@@ -387,6 +669,66 @@ breakMinutesInput.addEventListener("change", () => {
     transitionToBreakPhase();
   }
 });
+
+if (soundSelect) {
+  soundSelect.innerHTML = "";
+  SOUND_LIBRARY.forEach((preset) => {
+    const option = document.createElement("option");
+    option.value = preset.id;
+    option.textContent = preset.label;
+    soundSelect.append(option);
+  });
+
+  const availableSoundIds = new Set(SOUND_LIBRARY.map((preset) => preset.id));
+  if (!availableSoundIds.has(soundSelect.value)) {
+    soundSelect.value = DEFAULT_SOUND_ID;
+  }
+  selectedSoundId = availableSoundIds.has(soundSelect.value)
+    ? soundSelect.value
+    : DEFAULT_SOUND_ID;
+  soundSelect.addEventListener("change", () => {
+    if (availableSoundIds.has(soundSelect.value)) {
+      selectedSoundId = soundSelect.value;
+    } else {
+      selectedSoundId = DEFAULT_SOUND_ID;
+      soundSelect.value = DEFAULT_SOUND_ID;
+    }
+  });
+}
+
+if (volumeRange) {
+  const initialVolume = Number(volumeRange.value);
+  if (Number.isFinite(initialVolume)) {
+    chimeVolume = Math.max(0, Math.min(initialVolume / 100, MAX_VOLUME_MULTIPLIER));
+  } else {
+    chimeVolume = DEFAULT_VOLUME_PERCENT / 100;
+    volumeRange.value = String(DEFAULT_VOLUME_PERCENT);
+  }
+  updateVolumeDisplay();
+  volumeRange.addEventListener("input", () => {
+    const nextVolume = Number(volumeRange.value);
+    if (Number.isFinite(nextVolume)) {
+      chimeVolume = Math.max(0, Math.min(nextVolume / 100, MAX_VOLUME_MULTIPLIER));
+      updateVolumeDisplay();
+    }
+  });
+} else {
+  updateVolumeDisplay();
+}
+
+if (soundPreviewButton) {
+  const PREVIEW_COOLDOWN_MS = 1200;
+  soundPreviewButton.addEventListener("click", async () => {
+    soundPreviewButton.disabled = true;
+    try {
+      await playChime();
+    } finally {
+      window.setTimeout(() => {
+        soundPreviewButton.disabled = false;
+      }, PREVIEW_COOLDOWN_MS);
+    }
+  });
+}
 
 // 初期表示
 updateCountdownDisplay();
