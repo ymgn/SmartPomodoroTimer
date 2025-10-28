@@ -1,6 +1,6 @@
 # Smart Pomodoro Timer
 
-GitHub Pages で公開できる、自由な分数で繰り返し実行できるポモドーロタイマーです。
+GitHub Pages で公開している自由な分数で繰り返し実行できるポモドーロタイマーです。
 
 https://ymgn.github.io/SmartPomodoroTimer/
 
