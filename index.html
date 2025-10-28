@@ -80,6 +80,44 @@
             <button id="pause-button" class="btn" disabled>一時停止</button>
             <button id="reset-button" class="btn">リセット</button>
           </div>
+          <section
+            class="sound-settings"
+            aria-labelledby="sound-settings-title"
+          >
+            <h2 id="sound-settings-title" class="sound-settings__title">
+              通知サウンド
+            </h2>
+            <div class="sound-settings__row">
+              <label for="sound-select">効果音</label>
+              <select id="sound-select" class="sound-settings__select">
+                <option value="gentle-bell">ソフトベル</option>
+                <option value="digital-chirp">デジタルチャープ</option>
+                <option value="warm-marimba">マリンバ</option>
+                <option value="soft-gong">ソフトゴング</option>
+                <option value="fresh-drops">さわやかチャイム</option>
+              </select>
+            </div>
+            <div class="sound-settings__row">
+              <label for="volume-range">音量</label>
+              <div class="sound-settings__volume">
+                <input
+                  id="volume-range"
+                  type="range"
+                  min="0"
+                  max="200"
+                  step="1"
+                  value="100"
+                  aria-describedby="volume-value"
+                />
+                <span id="volume-value" aria-live="polite">100%</span>
+              </div>
+            </div>
+            <div class="sound-settings__actions">
+              <button type="button" id="sound-preview-button" class="btn">
+                音量を確認
+              </button>
+            </div>
+          </section>
           <label class="autoplay-toggle">
             <input type="checkbox" id="auto-restart" checked />
             <span>タイマー完了後に同じ分数で自動再開する</span>
